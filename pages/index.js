@@ -1,100 +1,185 @@
 import React from 'react'
-import { Form, Select, InputNumber, Switch, Slider, Button } from 'antd'
+import { useState, useEffect } from 'react'
+import { Upload, Icon, message, Button } from 'antd';
+import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined } from '@ant-design/icons';
+import { Chart } from '@antv/g2';
+import * as XLSX from "xlsx";
+// import {Chart, Axis, Tooltip, Line, Point, Geom} from "bizcharts";
+import DataSet from '@antv/data-set';
+import { initialData } from '../components/initialData.js'
 
-// Custom DatePicker that uses Day.js instead of Moment.js
-import DatePicker from '../components/DatePicker'
+// const make_cols = refstr => {
+// 	let o = [], C = XLSX.utils.decode_range(refstr).e.c + 1;
+// 	for(var i = 0; i < C; ++i) o[i] = {name:XLSX.utils.encode_col(i), key:i}
+// 	return o;
+// };
 
-import { SmileFilled } from '@ant-design/icons'
+const index = () => {
+  const [workbook, setWorkbook] = useState();
+  const [data, setData] = useState(initialData);
+  const [variables, setVariables] = useState(Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) ));
+  const [cols, setCols] = useState();
+  const [dataAvailable, setDataAvailable] = useState(true);
+  const [dv, setDv] = useState();
 
-import Link from 'next/link'
+  const onImportExcel = info => {
+    if( info.file.status === 'done') {
+      let file = info.file.originFileObj;
+      const fileReader = new FileReader();
+      fileReader.onload = event => {
+        try {
+          const { result } = event.target;
+          const wb = XLSX.read(result, { type: "binary" });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          // const data = XLSX.utils.sheet_to_json(ws, {header:1});
+          const data = XLSX.utils.sheet_to_json(ws);
+          // const cols = make_cols(ws['!ref']);
 
-const FormItem = Form.Item
-const Option = Select.Option
+          let variables = Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) );
+          // .map(var => return {'name': var, 'type': typeof(var)});
+          console.log(variables);
+          setVariables(variables)
 
-const content = {
-  marginTop: '100px',
+          const dv = new DataSet.DataView().source(data);
+
+          // console.log(dv);
+          // console.log("transform")
+
+          dv.transform({
+            type: 'aggregate',
+            fields: [' Profit '], 
+            operations: ['sum'],
+            as: ['Total Profit'],
+            groupBy: ['Country'], 
+          });
+
+          // console.log(data[1]);
+
+          setWorkbook(wb);
+          setData(data);
+          setDataAvailable(true);
+          // setCols(cols);
+          setDv(dv);
+
+          // console.log(dv);
+
+          message.success("Upload success!");
+        } catch (e) {
+          console.log(e);
+          message.error("File type is incorrect!");
+        }
+      };
+      fileReader.readAsBinaryString(file);
+    }
+  };
+
+  useEffect( () => {
+    if (!dataAvailable) return;
+
+    console.log(data);
+
+    const chart = new Chart({
+        container: 'chart-container',
+        autoFit: true,
+        width: 800,
+        height: 300,
+    });
+
+    chart.data(data);
+
+    chart
+    .interval()
+    // .adjust('stack')
+    .position('phone*value')
+    // .color('phone');
+
+    chart.render();
+
+  }, [dataAvailable])
+
+  const displayVariables = () => {
+    if (!dataAvailable) return;
+    return variables.map((variable,i) => {
+      return (
+      <div key={i} className="variable">
+        {variable.type === "string" && <FieldStringOutlined className="variableIcon" />}
+        {variable.type === "number" && <FieldNumberOutlined className="variableIcon" />}
+        <span>{variable.name}</span>
+      </div>)
+    });
+  }
+
+  const displaySheets = () => {
+    if (!workbook) return;
+    return workbook.SheetNames.map((name,i) => {
+      return <p key={i}>{name}</p>
+    });
+  }
+
+  // const displayChart = () => {
+  //   if (!dv) return;
+  //   return (
+  //     <Chart padding={[50,50,50,150]} height={400} data={dv.rows} autoFit>
+  //       <Tooltip/>
+  //       <Geom
+  //         type="interval"  
+  //         position={{
+  //             fields: [ 'Country' , 'Total Profit'],
+  //         }}
+  //         // color=" Profit "
+  //       />
+  //    </Chart>
+  //   )
+  // }
+
+  // const displayChartG2 = () => {
+  //   // if (!dataAvailable) return;
+
+  //   console.log(data);
+
+  //   const chart = new Chart({
+  //       container: 'chart-container',
+  //       autoFit: false,
+  //       width: 800,
+  //       height: 300,
+  //   });
+
+  //   chart.data(data);
+
+  //   chart
+  //   .interval()
+  //   // .adjust('stack')
+  //   .position('phone*value')
+  //   // .color('phone');
+
+  //   chart.render();
+  // }
+
+  return (
+      <div className="main">
+        <div className="data">
+          <h2>Data</h2>
+          <div className="upload">
+            <Upload onChange={onImportExcel} multiple={false} >
+              <Button>
+                <UploadOutlined /> Upload
+              </Button>
+            </Upload>
+          </div>
+          <div className="variables">
+            <h3>Variables</h3>
+            {displayVariables()}
+          </div>
+        </div>
+        <div className="chart">
+          <h2>Chart</h2>
+          <div id="chart-container"></div>
+          {/* {displayChart()} */}
+          {/* {displayChartG2()} */}
+        </div>
+      </div>
+  );
 }
-
-export default () => (
-  <div style={content}>
-    <div className="text-center mb-5">
-      <Link href="#">
-        <a className="logo mr-0">
-          <SmileFilled size={48} strokeWidth={1} />
-        </a>
-      </Link>
-
-      <p className="mb-0 mt-3 text-disabled">Welcome to the world !</p>
-    </div>
-    <div>
-      <Form layout="horizontal">
-        <FormItem
-          label="Input Number"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-        >
-          <InputNumber
-            size="large"
-            min={1}
-            max={10}
-            style={{ width: 100 }}
-            defaultValue={3}
-            name="inputNumber"
-          />
-        </FormItem>
-
-        <FormItem
-          label="Switch"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-        >
-          <Switch defaultChecked name="switch" />
-        </FormItem>
-
-        <FormItem
-          label="Slider"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-        >
-          <Slider defaultValue={70} />
-        </FormItem>
-
-        <FormItem
-          label="Select"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-        >
-          <Select
-            size="large"
-            defaultValue="lucy"
-            style={{ width: 192 }}
-            name="select"
-          >
-            <Option value="jack">jack</Option>
-            <Option value="lucy">lucy</Option>
-            <Option value="disabled" disabled>
-              disabled
-            </Option>
-            <Option value="yiminghe">yiminghe</Option>
-          </Select>
-        </FormItem>
-
-        <FormItem
-          label="DatePicker"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-        >
-          <DatePicker name="startDate" />
-        </FormItem>
-        <FormItem style={{ marginTop: 48 }} wrapperCol={{ span: 8, offset: 8 }}>
-          <Button size="large" type="primary" htmlType="submit">
-            OK
-          </Button>
-          <Button size="large" style={{ marginLeft: 8 }}>
-            Cancel
-          </Button>
-        </FormItem>
-      </Form>
-    </div>
-  </div>
-)
+ 
+export default index;

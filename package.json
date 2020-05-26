@@ -8,17 +8,21 @@
     "start": "next start"
   },
   "dependencies": {
-    "@ant-design/icons": "^4.0.6",
+    "@ant-design/icons": "^4.1.0",
+    "@antv/data-set": "^0.11.4",
+    "@antv/g2": "^4.0.8",
     "@next/bundle-analyzer": "^9.1.4",
     "antd": "4.1.2",
     "babel-plugin-import": "1.13.0",
+    "bizcharts": "^4.0.3",
     "cross-env": "^7.0.2",
     "dayjs": "1.8.24",
     "esm": "^3.2.25",
     "next": "9.3.4",
     "postcss-preset-env": "^6.7.0",
     "react": "16.13.1",
-    "react-dom": "16.13.1"
+    "react-dom": "16.13.1",
+    "xlsx": "^0.16.1"
   },
   "license": "ISC"
 }
