@@ -22,7 +22,7 @@ body {
   grid-template-columns: 1fr 4fr;
 }
 
-.data, .chart {
+.section {
   padding: 0.5em 0.5em 0 1em;
   height: 100vh;
 }
@@ -38,4 +38,10 @@ body {
 .variableIcon {
   display: inline;
   padding-right: 0.5em;
+}
+
+#chart-container {
+  display: flex;
+  height: 90%;
+  justify-content: center;
 }

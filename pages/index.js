@@ -4,7 +4,6 @@ import { Upload, Icon, message, Button } from 'antd';
 import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined } from '@ant-design/icons';
 import { Chart } from '@antv/g2';
 import * as XLSX from "xlsx";
-// import {Chart, Axis, Tooltip, Line, Point, Geom} from "bizcharts";
 import DataSet from '@antv/data-set';
 import { initialData } from '../components/initialData.js'
 
@@ -14,6 +13,16 @@ import { initialData } from '../components/initialData.js'
 // 	return o;
 // };
 
+const aux = ['by']
+const operationTypes = ['create', 'update', 'delete'];
+const elements = ['chart', 'xAxis', 'yAxis'];
+const properties = {
+    chart: ['type', 'data', 'height', 'width'],
+    xAxis: ['min', 'max'],
+    yAxis: ['min', 'max'],
+};
+ 
+
 const index = () => {
   const [workbook, setWorkbook] = useState();
   const [data, setData] = useState(initialData);
@@ -21,6 +30,44 @@ const index = () => {
   const [cols, setCols] = useState();
   const [dataAvailable, setDataAvailable] = useState(true);
   const [dv, setDv] = useState();
+  const operationsMap = { 
+    chart: {
+        create (properties) {
+          let variables = properties.data;
+
+          let x = variables[1]
+          let y = variables[0];
+          let stack = variables[2];
+
+          const chart = new Chart({
+              container: 'chart-container',
+              autoFit: false,
+              width: 600,
+              height: 300,
+              padding: [50, 50, 50, 50],
+          });
+
+          chart.data(data);
+
+          chart.height = 1000;
+
+          chart
+          .interval()
+          .position(`${x}*${y}`)
+          .adjust('stack')
+          .color(stack)
+
+          chart.render();
+        },
+        update (properties) {
+          chart.scale(y, {
+            min: 0,
+            max: 4,
+            nice: true,
+          })
+        },
+    }
+  }
 
   const onImportExcel = info => {
     if( info.file.status === 'done') {
@@ -52,29 +99,151 @@ const index = () => {
     }
   };
 
+  // Lexer
+  const lex = (str) => str.split(' ').map(s => s.trim().toLowerCase()).filter(word => !aux.includes(word));
+
+  // Parser
+  const parse = tokens => {
+      let c = 0;
+
+      let propertyName = '';
+      let propertyValues = [];
+
+      const peek = () => tokens[c];
+      const consume = () => tokens[c++];
+
+      const parseAndAddProperties = (element) => {
+          propertyName = consume();
+          propertyValues = [];
+
+          while(peek() && !properties[element.element].includes(peek())) {
+              propertyValues.push(consume());
+          }
+
+          return [propertyName, propertyValues];
+      }
+
+      const parseElement = () => {
+          const element = { element: consume(), type: 'element', properties: {} };
+
+          while (peek()) {
+              let propertyNameAndValues = parseAndAddProperties(element);
+              element.properties[propertyNameAndValues[0]] = propertyNameAndValues[1];
+          };
+          
+          return element;
+      }
+
+      const parseInput = () => {
+          const node = { operationType: consume(), type: 'OpType', operations: [] };
+          while (peek()) node.operations.push(parseElement());
+          return node;
+      }
+
+      return parseInput();
+  };
+
+  // Evaluator
+  const evaluate = ast => {
+      let element = ast.operations[0];
+      let opType = ast.operationType;
+      return operationsMap[element.element][opType](element.properties);
+  }
+
+  // useEffect( () => {
+  //   if (!dataAvailable) return;
+
+  //   let x = 'phone';
+  //   let y = 'value';
+  //   // let cluster = 'phone';
+
+  //   // Definition
+  //   const chart = new Chart({
+  //       container: 'chart',
+  //       autoFit: false,
+  //       width: 600,
+  //       height: 300,
+  //       padding: [30, 30, 90, 60],
+  //   });
+
+  //   // Data transformation
+  //   const dv = new DataSet.DataView().source(data);
+
+  //   let displayY = `Sum of ${y}`;
+  //   let displayY2 = `Count of ${y}`
+
+  //   dv.transform({
+  //     type: 'aggregate',
+  //     fields: [y, y], 
+  //     operations: ['sum', 'count'],
+  //     as: [displayY, displayY2],
+  //     groupBy: [x], 
+  //   });
+    
+  //   console.log(dv.rows)
+  //   // Data loading
+  //   chart.data(dv.rows);
+
+  //   // Define scales
+  //   chart.scale(displayY, {
+  //     nice: true,
+  //   })
+  //   chart.scale(displayY2, {
+  //     min: 0,
+  //     // max: 8,
+  //     nice: true,
+  //   })
+  //   // chart.scale(x, {
+  //   //   alias: toTitleCase(x),
+  //   // })
+
+  //   // Define axes titles
+  //   chart.axis(displayY, {
+  //     title: {
+  //       style: {
+  //           fill: 'black',
+  //       },
+  //       },
+  //     }
+  //   )
+
+  //   chart.axis(displayY2, {
+  //     title: {
+  //       style: {
+  //           fill: 'black',
+  //       },
+  //       },
+  //     }
+  //   )
+
+  //   chart.axis(x, {
+  //     title: {
+  //       style: {
+  //           fill: 'black',
+  //       },
+  //       },
+  //     }
+  //   )
+
+  //   // Geometry creation
+  
+  //   // eval("chart.line().position(`${x}*${displayY}`)");      
+  //   chart
+  //   .interval()
+  //   .position(`${x}*${displayY}`)
+
+  //   chart
+  //   .line()
+  //   .position(`${x}*${displayY2}`);
+
+  //   // Chart rendering
+  //   chart.render();
+
+  // }, [dataAvailable])
+
   useEffect( () => {
-    if (!dataAvailable) return;
-
-    console.log(data);
-
-    const chart = new Chart({
-        container: 'chart-container',
-        autoFit: true,
-        width: 800,
-        height: 300,
-    });
-
-    chart.data(data);
-
-    chart
-    .interval()
-    // .adjust('stack')
-    .position('phone*value')
-    // .color('phone');
-
-    chart.render();
-
-  }, [dataAvailable])
+    evaluate(parse(lex('create chart type Stacked data value by phone by feature')));  
+  }, [data, dataAvailable])
 
   const displayVariables = () => {
     if (!dataAvailable) return;
@@ -97,8 +266,8 @@ const index = () => {
 
   return (
       <div className="main">
-        <div className="data">
-          <h2>Data</h2>
+        <div className="section data">
+          <h2 className="sectionTitle">Data</h2>
           <div className="upload">
             <Upload onChange={onImportExcel} multiple={false} >
               <Button>
@@ -111,9 +280,11 @@ const index = () => {
             {displayVariables()}
           </div>
         </div>
-        <div className="chart">
-          <h2>Chart</h2>
-          <div id="chart-container"></div>
+        <div className="section chart">
+          <h2 className="sectionTitle">Chart</h2>
+          <div id="chart-container">
+            <div id="chart"></div>
+          </div>
         </div>
       </div>
   );
