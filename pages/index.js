@@ -13,59 +13,101 @@ import { initialData } from '../components/initialData.js'
 // 	return o;
 // };
 
-const aux = ['by']
-const operationTypes = ['create', 'update', 'delete'];
-const elements = ['chart', 'xAxis', 'yAxis'];
-const properties = {
-    chart: ['type', 'data', 'height', 'width'],
-    xAxis: ['min', 'max'],
-    yAxis: ['min', 'max'],
+const AUX_WORDS = ['by']
+const OPERATION_TYPES = ['create', 'update', 'delete'];
+const ELEMENTS = ['chart', 'xAxis', 'yAxis'];
+const PARAMETERS = {
+    chart: ['type', 'variables', 'height', 'width'], // Type can be 'stacked', clustered
+    xaxis: ['min', 'max'],
+    yaxis: ['min', 'max'],
 };
  
-
 const index = () => {
   const [workbook, setWorkbook] = useState();
   const [data, setData] = useState(initialData);
   const [variables, setVariables] = useState(Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) ));
-  const [cols, setCols] = useState();
   const [dataAvailable, setDataAvailable] = useState(true);
   const [dv, setDv] = useState();
   const operationsMap = { 
     chart: {
-        create (properties) {
-          let variables = properties.data;
-
-          let x = variables[1]
-          let y = variables[0];
-          let stack = variables[2];
-
-          const chart = new Chart({
-              container: 'chart-container',
-              autoFit: false,
-              width: 600,
-              height: 300,
-              padding: [50, 50, 50, 50],
+      create (parameters) {
+        let [variables, type] = [parameters.variables, parameters.type];
+  
+        [this.y, this.x, this.adjust] = [...variables];
+        this.displayY = this.y;
+        
+        this.data(data);
+        
+        if(!type) {
+          const dv = new DataSet.DataView().source(data);
+          this.displayY = `Sum of ${this.y}`;
+          dv.transform({
+            type: 'aggregate',
+            fields: [this.y], 
+            operations: ['sum'],
+            as: [this.displayY],
+            groupBy: [this.x], 
           });
+              
+          // Data loading
+          this.data(dv.rows);
 
-          chart.data(data);
+          this.interval().position(`${this.x}*${this.displayY}`);
 
-          chart.height = 1000;
+        } else {
+          switch (type[0]) {
+            case 'stacked':
+              this
+                .interval()
+                .position(`${this.x}*${this.y}`)
+                .adjust('stack')
+                .color(this.adjust)
+              break;
+            case 'clustered':
+              this
+              .interval()
+              .position(`${this.x}*${this.y}`)
+                .adjust([
+                  {
+                    type: 'dodge',
+                    marginRatio: 0,
+                  },
+                ])
+              .color(this.adjust);
+              break;
+            default:  
+              break;
+          }
+        }
+      },
+      update (parameters) {
+        this.scale(y, {
+          min: 0,
+          max: 4,
+          nice: true,
+        })
+      },
+    },
+    yaxis: {
+      update (parameters) {
+        let config = {};
+        PARAMETERS.yaxis.forEach(param => { if(parameters[param]) {config[param] = parameters[param] * 1} });
+        this.scale(this.displayY, config)
+      },
+    }
+  }
 
-          chart
-          .interval()
-          .position(`${x}*${y}`)
-          .adjust('stack')
-          .color(stack)
-
-          chart.render();
-        },
-        update (properties) {
-          chart.scale(y, {
-            min: 0,
-            max: 4,
-            nice: true,
-          })
-        },
+  class customChart extends Chart {
+    constructor(parameters) {
+      super(parameters);
+      this.x = '';
+      this.y = '';
+      this.displayY = '';
+      this.adjust = '';
+    }
+    
+    apply (callback, parameters) {
+      callback.apply(this, parameters);
     }
   }
 
@@ -100,35 +142,37 @@ const index = () => {
   };
 
   // Lexer
-  const lex = (str) => str.split(' ').map(s => s.trim().toLowerCase()).filter(word => !aux.includes(word));
+  const lex = (str) => str.split(' ').map(s => s.trim().toLowerCase()).filter(word => !AUX_WORDS.includes(word));
 
   // Parser
   const parse = tokens => {
       let c = 0;
 
-      let propertyName = '';
-      let propertyValues = [];
+      let parameterName = '';
+      let parameterValues = [];
 
       const peek = () => tokens[c];
       const consume = () => tokens[c++];
 
-      const parseAndAddProperties = (element) => {
-          propertyName = consume();
-          propertyValues = [];
+      console.log(tokens);
 
-          while(peek() && !properties[element.element].includes(peek())) {
-              propertyValues.push(consume());
+      const parseAndAddParameters = (element) => {
+          parameterName = consume();
+          parameterValues = [];
+
+          while(peek() && !PARAMETERS[element.element].includes(peek())) {
+              parameterValues.push(consume());
           }
 
-          return [propertyName, propertyValues];
+          return [parameterName, parameterValues];
       }
 
       const parseElement = () => {
-          const element = { element: consume(), type: 'element', properties: {} };
+          const element = { element: consume(), type: 'element', parameters: {} };
 
           while (peek()) {
-              let propertyNameAndValues = parseAndAddProperties(element);
-              element.properties[propertyNameAndValues[0]] = propertyNameAndValues[1];
+              let parameterNameAndValues = parseAndAddParameters(element);
+              element.parameters[parameterNameAndValues[0]] = parameterNameAndValues[1];
           };
           
           return element;
@@ -147,103 +191,75 @@ const index = () => {
   const evaluate = ast => {
       let element = ast.operations[0];
       let opType = ast.operationType;
-      return operationsMap[element.element][opType](element.properties);
+      return {operation: operationsMap[element.element][opType], parameters: element.parameters};
   }
 
-  // useEffect( () => {
-  //   if (!dataAvailable) return;
+  useEffect( () => {
+    let myChart = new customChart({
+      container: 'chart-container',
+      autoFit: false,
+      width: 600,
+      height: 300,
+      padding: [50, 50, 50, 50],
+    });
 
+    // let output = evaluate(parse(lex('create chart type clustered variables value by phone by feature'))); 
+    let output = evaluate(parse(lex('create chart variables value by phone'))); 
+    myChart.apply(output.operation, [output.parameters])
+
+    output = evaluate(parse(lex('update yAxis min 1.5 max 2.2')));
+    console.log(output);
+    myChart.apply(output.operation, [output.parameters])
+
+    myChart.render();
+
+  }, [data, dataAvailable])
+
+  // useEffect( () => {
   //   let x = 'phone';
   //   let y = 'value';
-  //   // let cluster = 'phone';
 
   //   // Definition
   //   const chart = new Chart({
-  //       container: 'chart',
+  //       container: 'chart-container',
   //       autoFit: false,
   //       width: 600,
   //       height: 300,
-  //       padding: [30, 30, 90, 60],
+  //       padding: [30, 30, 60, 60],
   //   });
 
   //   // Data transformation
   //   const dv = new DataSet.DataView().source(data);
 
   //   let displayY = `Sum of ${y}`;
-  //   let displayY2 = `Count of ${y}`
 
   //   dv.transform({
   //     type: 'aggregate',
-  //     fields: [y, y], 
-  //     operations: ['sum', 'count'],
-  //     as: [displayY, displayY2],
+  //     fields: [y], 
+  //     operations: ['sum'],
+  //     as: [displayY],
   //     groupBy: [x], 
   //   });
     
-  //   console.log(dv.rows)
   //   // Data loading
   //   chart.data(dv.rows);
 
   //   // Define scales
   //   chart.scale(displayY, {
-  //     nice: true,
+  //     min: 1.5,
+  //     max: 2.2,
+  //     // nice: true,
   //   })
-  //   chart.scale(displayY2, {
-  //     min: 0,
-  //     // max: 8,
-  //     nice: true,
-  //   })
-  //   // chart.scale(x, {
-  //   //   alias: toTitleCase(x),
-  //   // })
 
-  //   // Define axes titles
-  //   chart.axis(displayY, {
-  //     title: {
-  //       style: {
-  //           fill: 'black',
-  //       },
-  //       },
-  //     }
-  //   )
-
-  //   chart.axis(displayY2, {
-  //     title: {
-  //       style: {
-  //           fill: 'black',
-  //       },
-  //       },
-  //     }
-  //   )
-
-  //   chart.axis(x, {
-  //     title: {
-  //       style: {
-  //           fill: 'black',
-  //       },
-  //       },
-  //     }
-  //   )
-
-  //   // Geometry creation
-  
-  //   // eval("chart.line().position(`${x}*${displayY}`)");      
   //   chart
   //   .interval()
   //   .position(`${x}*${displayY}`)
 
-  //   chart
-  //   .line()
-  //   .position(`${x}*${displayY2}`);
-
   //   // Chart rendering
   //   chart.render();
 
-  // }, [dataAvailable])
+  // }, [data, dataAvailable])
 
-  useEffect( () => {
-    evaluate(parse(lex('create chart type Stacked data value by phone by feature')));  
-  }, [data, dataAvailable])
 
   const displayVariables = () => {
     if (!dataAvailable) return;
