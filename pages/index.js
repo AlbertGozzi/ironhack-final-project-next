@@ -1,5 +1,5 @@
 import React from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Upload, Icon, message, Button } from 'antd';
 import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined } from '@ant-design/icons';
 import { Chart } from '@antv/g2';
@@ -15,9 +15,9 @@ import { initialData } from '../components/initialData.js'
 
 const AUX_WORDS = ['by']
 const OPERATION_TYPES = ['create', 'update', 'delete'];
-const ELEMENTS = ['chart', 'xAxis', 'yAxis'];
+const ELEMENTS = ['chart', 'xaxis', 'yaxis'];
 const PARAMETERS = {
-    chart: ['type', 'variables', 'height', 'width'], // Type can be 'stacked', clustered
+    chart: ['type', 'variables', 'height', 'width'], // Type can be 'stacked', clustered, bar
     xaxis: ['min', 'max'],
     yaxis: ['min', 'max'],
 };
@@ -28,15 +28,21 @@ const index = () => {
   const [variables, setVariables] = useState(Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) ));
   const [dataAvailable, setDataAvailable] = useState(true);
   const [dv, setDv] = useState();
+  const commands = useRef([]);
+  const commandIndex = useRef(0);
+
   const operationsMap = { 
     chart: {
       create (parameters) {
+        console.log(parameters)
         let [variables, type] = [parameters.variables, parameters.type];
   
         [this.y, this.x, this.adjust] = [...variables];
         this.displayY = this.y;
         
         this.data(data);
+
+        if (type.includes('bar')) { this.coordinate().transpose() }
         
         if(!type) {
           const dv = new DataSet.DataView().source(data);
@@ -80,18 +86,11 @@ const index = () => {
           }
         }
       },
-      update (parameters) {
-        this.scale(y, {
-          min: 0,
-          max: 4,
-          nice: true,
-        })
-      },
     },
     yaxis: {
       update (parameters) {
         let config = {};
-        PARAMETERS.yaxis.forEach(param => { if(parameters[param]) {config[param] = parameters[param] * 1} });
+        PARAMETERS.yaxis.forEach(param => {if(parameters[param]) {config[param] = parameters[param] * 1} });
         this.scale(this.displayY, config)
       },
     }
@@ -154,8 +153,6 @@ const index = () => {
       const peek = () => tokens[c];
       const consume = () => tokens[c++];
 
-      console.log(tokens);
-
       const parseAndAddParameters = (element) => {
           parameterName = consume();
           parameterValues = [];
@@ -187,14 +184,19 @@ const index = () => {
       return parseInput();
   };
 
-  // Evaluator
-  const evaluate = ast => {
-      let element = ast.operations[0];
-      let opType = ast.operationType;
-      return {operation: operationsMap[element.element][opType], parameters: element.parameters};
+
+  const addCommand = str => {
+    let ast = parse(lex(str))    
+    ast.index = commandIndex.current++;
+    commands.current.push(ast);
   }
 
   useEffect( () => {
+    // addCommand('create chart type clustered variables value by phone by feature'); 
+    addCommand('create chart type stacked bar variables value by phone by feature'); 
+    addCommand('update yAxis max 3');
+    addCommand('update yAxis min 0');
+
     let myChart = new customChart({
       container: 'chart-container',
       autoFit: false,
@@ -203,63 +205,40 @@ const index = () => {
       padding: [50, 50, 50, 50],
     });
 
-    // let output = evaluate(parse(lex('create chart type clustered variables value by phone by feature'))); 
-    let output = evaluate(parse(lex('create chart variables value by phone'))); 
-    myChart.apply(output.operation, [output.parameters])
+    // Merge commands
+    let commandsMergedByOpType = OPERATION_TYPES.map(opType => {
+      let opTypeCommands = commands.current.filter(command => command.operationType === opType);
+      let opTypeMergedOperations = opTypeCommands.flatMap(command => command.operations);
+      return { operationType: opType, type: "OpType", operations: opTypeMergedOperations };
+    }).filter(ops => ops.operations[0]);
 
-    output = evaluate(parse(lex('update yAxis min 1.5 max 2.2')));
-    console.log(output);
-    myChart.apply(output.operation, [output.parameters])
+    // Merge operations for each command
+
+    let fullyMergedCommands = commandsMergedByOpType.map(command => {
+      let operationElements = command.operations.map(operation => operation.element).filter((element, index, arr) => arr.indexOf(element) === index);
+      let fullyMergedOperations = operationElements.map(opElement => {
+        let mergedParameters = {};
+        command.operations.filter(operation => operation.element === opElement).forEach(operation => {
+          mergedParameters = {...mergedParameters, ...operation.parameters};
+        });
+        return {element: opElement, type: "element", parameters: mergedParameters}
+      });
+      return { operationType: command.operationType, type: command.type, operations: fullyMergedOperations }
+    });
+
+    fullyMergedCommands.forEach(ast => {
+      let opType = ast.operationType;
+
+      ast.operations.forEach(element => { 
+        let operation = operationsMap[element.element][opType]
+        let parameters = element.parameters;  
+        myChart.apply(operation, [parameters]);
+      })
+    })
 
     myChart.render();
 
   }, [data, dataAvailable])
-
-  // useEffect( () => {
-  //   let x = 'phone';
-  //   let y = 'value';
-
-  //   // Definition
-  //   const chart = new Chart({
-  //       container: 'chart-container',
-  //       autoFit: false,
-  //       width: 600,
-  //       height: 300,
-  //       padding: [30, 30, 60, 60],
-  //   });
-
-  //   // Data transformation
-  //   const dv = new DataSet.DataView().source(data);
-
-  //   let displayY = `Sum of ${y}`;
-
-  //   dv.transform({
-  //     type: 'aggregate',
-  //     fields: [y], 
-  //     operations: ['sum'],
-  //     as: [displayY],
-  //     groupBy: [x], 
-  //   });
-    
-  //   // Data loading
-  //   chart.data(dv.rows);
-
-  //   // Define scales
-  //   chart.scale(displayY, {
-  //     min: 1.5,
-  //     max: 2.2,
-  //     // nice: true,
-  //   })
-
-  //   chart
-  //   .interval()
-  //   .position(`${x}*${displayY}`)
-
-  //   // Chart rendering
-  //   chart.render();
-
-  // }, [data, dataAvailable])
-
 
   const displayVariables = () => {
     if (!dataAvailable) return;
