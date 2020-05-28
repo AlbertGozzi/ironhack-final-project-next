@@ -1,11 +1,12 @@
 import React from 'react'
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Icon, message, Button } from 'antd';
-import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined } from '@ant-design/icons';
+import { Upload, Icon, message, Button, Divider, Input } from 'antd';
+import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined, RocketOutlined } from '@ant-design/icons';
 import { Chart } from '@antv/g2';
 import * as XLSX from "xlsx";
 import DataSet from '@antv/data-set';
-import { initialData } from '../components/initialData.js'
+import { initialData } from '../components/initialData.js';
+import isHotkey from 'is-hotkey';
 
 // const make_cols = refstr => {
 // 	let o = [], C = XLSX.utils.decode_range(refstr).e.c + 1;
@@ -16,25 +17,40 @@ import { initialData } from '../components/initialData.js'
 const AUX_WORDS = ['by']
 const OPERATION_TYPES = ['create', 'update', 'delete'];
 const ELEMENTS = ['chart', 'xaxis', 'yaxis'];
+const CHART_CONFIG_PARAMETERS = ['height', 'width', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left']
+const CHART_CONFIG_PARAMETERS_PADDING = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']
 const PARAMETERS = {
-    chart: ['type', 'variables', 'height', 'width'], // Type can be 'stacked', clustered, bar
+    chart: ['type', 'variables', 'height', 'width', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom'], // Type can be 'stacked', clustered, bar
     xaxis: ['min', 'max'],
     yaxis: ['min', 'max'],
 };
- 
+const HOTKEYS = {
+  'mod+k': 'displayCommandBar',
+  // 'mod+i': 'italic',
+  // 'mod+u': 'underline'
+};
+
+let defaultChartConfig = {
+  container: 'chart-container',
+  autoFit: false,
+  width: 800,
+  height: 500,
+  padding: [50, 50, 50, 50],
+}
+
 const index = () => {
   const [workbook, setWorkbook] = useState();
   const [data, setData] = useState(initialData);
   const [variables, setVariables] = useState(Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) ));
   const [dataAvailable, setDataAvailable] = useState(true);
-  const [dv, setDv] = useState();
+  const [displayCommandBar, setDisplayCommandBar] = useState(false);
+  const chartConfig = useRef(defaultChartConfig);
+  const chartConfigParameters = useRef([]);
   const commands = useRef([]);
-  const commandIndex = useRef(0);
-
+  
   const operationsMap = { 
     chart: {
       create (parameters) {
-        console.log(parameters)
         let [variables, type] = [parameters.variables, parameters.type];
   
         [this.y, this.x, this.adjust] = [...variables];
@@ -90,7 +106,7 @@ const index = () => {
     yaxis: {
       update (parameters) {
         let config = {};
-        PARAMETERS.yaxis.forEach(param => {if(parameters[param]) {config[param] = parameters[param] * 1} });
+        PARAMETERS.yaxis.forEach(param => {if(parameters[param]) {config[param] = parameters[param]} });
         this.scale(this.displayY, config)
       },
     }
@@ -158,7 +174,7 @@ const index = () => {
           parameterValues = [];
 
           while(peek() && !PARAMETERS[element.element].includes(peek())) {
-              parameterValues.push(consume());
+            parameterValues.push(isNaN(peek() * 1) ? consume() : consume() * 1);
           }
 
           return [parameterName, parameterValues];
@@ -184,26 +200,92 @@ const index = () => {
       return parseInput();
   };
 
-
   const addCommand = str => {
-    let ast = parse(lex(str))    
-    ast.index = commandIndex.current++;
-    commands.current.push(ast);
+    let ast = parse(lex(str));
+
+    // Remove chart config parameters before pushing them to commands list
+    ast.operations.forEach((operation, i) => {
+
+      // Remove operation parameter
+      Object.keys(operation.parameters).forEach(parameter => {
+        if (CHART_CONFIG_PARAMETERS.includes(parameter)) { 
+          chartConfigParameters.current[parameter] = operation.parameters[parameter];
+          delete operation.parameters[parameter];
+        }
+      })
+
+      // Remove whole operation if empty
+      if (!Object.keys(operation.parameters).length) { ast.operations.splice(i);}
+
+    });
+
+    // Only push if there are any operations left
+    if (ast.operations.length) commands.current.push(ast);
   }
 
+  const submitCommand = e => {
+    addCommand(e.target.value);
+    setDisplayCommandBar(false);
+    console.log(commands.current);
+  }
+    
+  useEffect(() => {
+    const handleKeyPress = (event) => {
+      for (const hotkey in HOTKEYS) {
+        if (isHotkey(hotkey, event)) {
+          event.preventDefault()
+          switch (HOTKEYS[hotkey]) {
+            case 'displayCommandBar':
+              setDisplayCommandBar(true);
+              break;
+            default: 
+              break;
+          }
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyPress );
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, []);
+
   useEffect( () => {
+    // Add all commands
     // addCommand('create chart type clustered variables value by phone by feature'); 
     addCommand('create chart type stacked bar variables value by phone by feature'); 
-    addCommand('update yAxis max 3');
+    addCommand('update chart padding-left 0');
+    addCommand('update chart padding-left 200');
+    addCommand('update yAxis max 5');
     addCommand('update yAxis min 0');
 
-    let myChart = new customChart({
-      container: 'chart-container',
-      autoFit: false,
-      width: 600,
-      height: 300,
-      padding: [50, 50, 50, 50],
-    });
+    // Apply all config related commands
+    CHART_CONFIG_PARAMETERS.forEach(parameter => {
+      let inputtedParameters = Object.keys(chartConfigParameters.current);
+      if (inputtedParameters.includes(parameter)) {
+        chartConfig.current[parameter] = chartConfigParameters.current[parameter][0];
+
+        if (CHART_CONFIG_PARAMETERS_PADDING.includes(parameter)) {
+          let padding = chartConfig.current.padding;
+          switch (parameter) {
+            case 'padding-top':
+              padding[0] = chartConfigParameters.current[parameter][0];
+              break;
+            case 'padding-right':
+              padding[1] = chartConfigParameters.current[parameter][0];
+              break;
+            case 'padding-bottom':
+              padding[2] = chartConfigParameters.current[parameter][0];
+              break;
+            case 'padding-left':
+              padding[3] = chartConfigParameters.current[parameter][0];
+              break;
+          }
+          chartConfig.current.padding = padding;
+        }
+
+      }
+    })
+
+    let myChart = new customChart(chartConfig.current);
 
     // Merge commands
     let commandsMergedByOpType = OPERATION_TYPES.map(opType => {
@@ -213,7 +295,6 @@ const index = () => {
     }).filter(ops => ops.operations[0]);
 
     // Merge operations for each command
-
     let fullyMergedCommands = commandsMergedByOpType.map(command => {
       let operationElements = command.operations.map(operation => operation.element).filter((element, index, arr) => arr.indexOf(element) === index);
       let fullyMergedOperations = operationElements.map(opElement => {
@@ -226,6 +307,7 @@ const index = () => {
       return { operationType: command.operationType, type: command.type, operations: fullyMergedOperations }
     });
 
+    // Apply all commands
     fullyMergedCommands.forEach(ast => {
       let opType = ast.operationType;
 
@@ -281,6 +363,14 @@ const index = () => {
             <div id="chart"></div>
           </div>
         </div>
+        {displayCommandBar && <div className="commandBar">
+          <div className="commandBarHeader">
+            <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
+            <h4>Aleph Commands</h4>
+          </div>
+          <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
+          <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
+        </div>}
       </div>
   );
 }
