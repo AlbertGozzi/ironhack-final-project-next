@@ -31,7 +31,7 @@ const HOTKEYS = {
 };
 
 let defaultChartConfig = {
-  container: 'chart-container',
+  container: 'chart',
   autoFit: false,
   width: 800,
   height: 500,
@@ -44,9 +44,9 @@ const index = () => {
   const [variables, setVariables] = useState(Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) ));
   const [dataAvailable, setDataAvailable] = useState(true);
   const [displayCommandBar, setDisplayCommandBar] = useState(false);
+  const [commands, setCommands] = useState([]);
   const chartConfig = useRef(defaultChartConfig);
   const chartConfigParameters = useRef([]);
-  const commands = useRef([]);
   
   const operationsMap = { 
     chart: {
@@ -58,7 +58,7 @@ const index = () => {
         
         this.data(data);
 
-        if (type.includes('bar')) { this.coordinate().transpose() }
+        if (type && type.includes('bar')) { this.coordinate().transpose() }
         
         if(!type) {
           const dv = new DataSet.DataView().source(data);
@@ -201,6 +201,12 @@ const index = () => {
   };
 
   const addCommand = str => {
+    //TODO improve
+    if (str === 'delete commands') { 
+      setCommands([]) 
+      return;
+    }
+
     let ast = parse(lex(str));
 
     // Remove chart config parameters before pushing them to commands list
@@ -220,13 +226,14 @@ const index = () => {
     });
 
     // Only push if there are any operations left
-    if (ast.operations.length) commands.current.push(ast);
+    console.log(ast)
+    if (ast.operations.length) setCommands(commands => [...commands, ast]);
+    console.log(commands)
   }
 
   const submitCommand = e => {
     addCommand(e.target.value);
     setDisplayCommandBar(false);
-    console.log(commands.current);
   }
     
   useEffect(() => {
@@ -236,7 +243,7 @@ const index = () => {
           event.preventDefault()
           switch (HOTKEYS[hotkey]) {
             case 'displayCommandBar':
-              setDisplayCommandBar(true);
+              setDisplayCommandBar(displayCommandBar => !displayCommandBar);
               break;
             default: 
               break;
@@ -249,13 +256,18 @@ const index = () => {
   }, []);
 
   useEffect( () => {
+
+    // Delete all prior charts
+    let chartContainer = document.getElementById("chart-container");
+    chartContainer.innerHTML = `<div id="chart"> </div>`;
+
     // Add all commands
     // addCommand('create chart type clustered variables value by phone by feature'); 
-    addCommand('create chart type stacked bar variables value by phone by feature'); 
-    addCommand('update chart padding-left 0');
-    addCommand('update chart padding-left 200');
-    addCommand('update yAxis max 5');
-    addCommand('update yAxis min 0');
+    // addCommand('create chart type stacked bar variables value by phone by feature'); 
+    // addCommand('update chart padding-left 0');
+    // addCommand('update chart padding-left 200');
+    // addCommand('update yAxis max 5');
+    // addCommand('update yAxis min 0');
 
     // Apply all config related commands
     CHART_CONFIG_PARAMETERS.forEach(parameter => {
@@ -289,7 +301,7 @@ const index = () => {
 
     // Merge commands
     let commandsMergedByOpType = OPERATION_TYPES.map(opType => {
-      let opTypeCommands = commands.current.filter(command => command.operationType === opType);
+      let opTypeCommands = commands.filter(command => command.operationType === opType);
       let opTypeMergedOperations = opTypeCommands.flatMap(command => command.operations);
       return { operationType: opType, type: "OpType", operations: opTypeMergedOperations };
     }).filter(ops => ops.operations[0]);
@@ -320,7 +332,7 @@ const index = () => {
 
     myChart.render();
 
-  }, [data, dataAvailable])
+  }, [data, dataAvailable, commands])
 
   const displayVariables = () => {
     if (!dataAvailable) return;
