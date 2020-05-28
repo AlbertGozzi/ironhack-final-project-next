@@ -1,18 +1,12 @@
 import React from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { Upload, Icon, message, Button, Divider, Input } from 'antd';
-import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined, RocketOutlined } from '@ant-design/icons';
+import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined, RocketOutlined, BranchesOutlined } from '@ant-design/icons';
 import { Chart } from '@antv/g2';
 import * as XLSX from "xlsx";
 import DataSet from '@antv/data-set';
 import { initialData } from '../components/initialData.js';
 import isHotkey from 'is-hotkey';
-
-// const make_cols = refstr => {
-// 	let o = [], C = XLSX.utils.decode_range(refstr).e.c + 1;
-// 	for(var i = 0; i < C; ++i) o[i] = {name:XLSX.utils.encode_col(i), key:i}
-// 	return o;
-// };
 
 const AUX_WORDS = ['by']
 const OPERATION_TYPES = ['create', 'update', 'delete'];
@@ -20,15 +14,56 @@ const ELEMENTS = ['chart', 'xaxis', 'yaxis'];
 const CHART_CONFIG_PARAMETERS = ['height', 'width', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left']
 const CHART_CONFIG_PARAMETERS_PADDING = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']
 const PARAMETERS = {
-    chart: ['type', 'variables', 'height', 'width', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom'], // Type can be 'stacked', clustered, bar
-    xaxis: ['min', 'max'],
-    yaxis: ['min', 'max'],
+    chart: ['type', 'variables', 'color', 'height', 'width', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom'], // Type can be 'stacked', clustered, bar
+    xaxis: ['min', 'max', 'format'],
+    yaxis: [
+      {command:'min', parameter: 'min', parameterTransform: (num) => num},
+      {command:'max', parameter: 'max', parameterTransform: (num) => num},
+      {command:'autoformat', parameter: 'nice', parameterTransform: () => true},
+      {command:'format', parameter: 'formatter', parameterTransform: (arr) => { 
+        switch (arr[0]) {
+          case "thousands":
+            return ((val) => `${formatNumber(Math.round(val/1000))}k`)
+          default:
+            return ((num) => num)
+        }
+      }},
+    ],
 };
 const HOTKEYS = {
   'mod+k': 'displayCommandBar',
-  // 'mod+i': 'italic',
-  // 'mod+u': 'underline'
 };
+
+function formatNumber(num) {
+  return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
+}
+
+function toDataURL(chart) {
+  const canvas = chart.getCanvas();
+  const renderer = chart.renderer;
+  const canvasDom = canvas.get('el');
+
+  console.log(canvas);
+  console.log(canvasDom);
+
+  let dataURL = '';
+  // if (renderer === 'svg') {
+  //   const clone = canvasDom.cloneNode(true);
+  //   const svgDocType = document.implementation.createDocumentType(
+  //     'svg',
+  //     '-//W3C//DTD SVG 1.1//EN',
+  //     'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+  //   );
+  //   const svgDoc = document.implementation.createDocument('http://www.w3.org/2000/svg', 'svg', svgDocType);
+  //   svgDoc.replaceChild(clone, svgDoc.documentElement);
+  //   const svgData = new XMLSerializer().serializeToString(svgDoc);
+  //   dataURL = 'data:image/svg+xml;charset=utf8,' + encodeURIComponent(svgData);
+  // } else if (renderer === 'canvas') {
+    // dataURL = canvasDom.toDataURL('image/png');
+    dataURL = canvasDom.toDataURL();
+  // }
+  return dataURL;
+}
 
 let defaultChartConfig = {
   container: 'chart',
@@ -45,13 +80,13 @@ const index = () => {
   const [dataAvailable, setDataAvailable] = useState(true);
   const [displayCommandBar, setDisplayCommandBar] = useState(false);
   const [commands, setCommands] = useState([]);
+  const [configCommands, setConfigCommands] = useState({});
   const chartConfig = useRef(defaultChartConfig);
-  const chartConfigParameters = useRef([]);
-  
+
   const operationsMap = { 
     chart: {
       create (parameters) {
-        let [variables, type] = [parameters.variables, parameters.type];
+        let [variables, type, color] = [parameters.variables, parameters.type, parameters.color];
   
         [this.y, this.x, this.adjust] = [...variables];
         this.displayY = this.y;
@@ -74,14 +109,26 @@ const index = () => {
           // Data loading
           this.data(dv.rows);
 
-          this.interval().position(`${this.x}*${this.displayY}`);
+          this.interval().position(`${this.x}*${this.displayY}`).color((color && color[0]) || '#6395F9');
 
         } else {
           switch (type[0]) {
             case 'stacked':
+              const dv = new DataSet.DataView().source(data);
+              this.displayY = `Sum of ${this.y}`;
+              dv.transform({
+                type: 'aggregate',
+                fields: [this.y], 
+                operations: ['sum'],
+                as: [this.displayY],
+                groupBy: [this.x, this.adjust], 
+              });
+    
+              this.data(dv.rows);
+
               this
                 .interval()
-                .position(`${this.x}*${this.y}`)
+                .position(`${this.x}*${this.displayY}`)
                 .adjust('stack')
                 .color(this.adjust)
               break;
@@ -97,6 +144,22 @@ const index = () => {
                 ])
               .color(this.adjust);
               break;
+            case 'line':
+              const dv1 = new DataSet.DataView().source(data);
+              this.displayY = `Sum of ${this.y}`;
+              dv1.transform({
+                type: 'aggregate',
+                fields: [this.y], 
+                operations: ['sum'],
+                as: [this.displayY],
+                groupBy: [this.x], 
+              });
+                  
+              // Data loading
+              this.data(dv1.rows);
+    
+              this.line().position(`${this.x}*${this.displayY}`).color((color && color[0]) || '#6395F9');
+              break;
             default:  
               break;
           }
@@ -106,7 +169,12 @@ const index = () => {
     yaxis: {
       update (parameters) {
         let config = {};
-        PARAMETERS.yaxis.forEach(param => {if(parameters[param]) {config[param] = parameters[param]} });
+        PARAMETERS.yaxis.forEach(commandConfig => {
+          if(parameters[commandConfig.command]) {
+            let parameterValue = parameters[commandConfig.command] 
+            config[commandConfig.parameter] = commandConfig.parameterTransform(parameterValue);
+          }
+        });
         this.scale(this.displayY, config)
       },
     }
@@ -126,6 +194,18 @@ const index = () => {
     }
   }
 
+  function trim_headers(ws) {
+    if(!ws || !ws["!ref"]) return;
+    var ref = XLSX.utils.decode_range(ws["!ref"]);
+    for(var C = ref.s.c; C <= ref.e.c; ++C) {
+      var cell = ws[XLSX.utils.encode_cell({r:ref.s.r, c:C})];
+      if(cell.t == "s") {
+        cell.v = cell.v.trim();
+        if(cell.w) cell.w = cell.w.trim();
+      }
+    }
+  }
+
   const onImportExcel = info => {
     if( info.file.status === 'done') {
       let file = info.file.originFileObj;
@@ -135,8 +215,10 @@ const index = () => {
           const { result } = event.target;
           const wb = XLSX.read(result, { type: "binary" });
           const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
+          let ws = wb.Sheets[wsname];
+          trim_headers(ws)
           const data = XLSX.utils.sheet_to_json(ws);
+          console.log(data[0]);
 
           let variables = Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) );
 
@@ -157,7 +239,8 @@ const index = () => {
   };
 
   // Lexer
-  const lex = (str) => str.split(' ').map(s => s.trim().toLowerCase()).filter(word => !AUX_WORDS.includes(word));
+  //TODO add tolowercase
+  const lex = (str) => str.split(' ').map(s => s.trim()).filter(word => !AUX_WORDS.includes(word));
 
   // Parser
   const parse = tokens => {
@@ -202,7 +285,7 @@ const index = () => {
 
   const addCommand = str => {
     //TODO improve
-    if (str === 'delete commands') { 
+    if (str === 'clear commands') { 
       setCommands([]) 
       return;
     }
@@ -214,8 +297,8 @@ const index = () => {
 
       // Remove operation parameter
       Object.keys(operation.parameters).forEach(parameter => {
-        if (CHART_CONFIG_PARAMETERS.includes(parameter)) { 
-          chartConfigParameters.current[parameter] = operation.parameters[parameter];
+        if (CHART_CONFIG_PARAMETERS.includes(parameter)) {
+          setConfigCommands({...configCommands, [parameter]: operation.parameters[parameter]}) 
           delete operation.parameters[parameter];
         }
       })
@@ -226,9 +309,7 @@ const index = () => {
     });
 
     // Only push if there are any operations left
-    console.log(ast)
     if (ast.operations.length) setCommands(commands => [...commands, ast]);
-    console.log(commands)
   }
 
   const submitCommand = e => {
@@ -261,34 +342,26 @@ const index = () => {
     let chartContainer = document.getElementById("chart-container");
     chartContainer.innerHTML = `<div id="chart"> </div>`;
 
-    // Add all commands
-    // addCommand('create chart type clustered variables value by phone by feature'); 
-    // addCommand('create chart type stacked bar variables value by phone by feature'); 
-    // addCommand('update chart padding-left 0');
-    // addCommand('update chart padding-left 200');
-    // addCommand('update yAxis max 5');
-    // addCommand('update yAxis min 0');
-
     // Apply all config related commands
     CHART_CONFIG_PARAMETERS.forEach(parameter => {
-      let inputtedParameters = Object.keys(chartConfigParameters.current);
+      let inputtedParameters = Object.keys(configCommands);
       if (inputtedParameters.includes(parameter)) {
-        chartConfig.current[parameter] = chartConfigParameters.current[parameter][0];
+        chartConfig.current[parameter] = configCommands[parameter][0];
 
         if (CHART_CONFIG_PARAMETERS_PADDING.includes(parameter)) {
           let padding = chartConfig.current.padding;
           switch (parameter) {
             case 'padding-top':
-              padding[0] = chartConfigParameters.current[parameter][0];
+              padding[0] = configCommands[parameter][0];
               break;
             case 'padding-right':
-              padding[1] = chartConfigParameters.current[parameter][0];
+              padding[1] = configCommands[parameter][0];
               break;
             case 'padding-bottom':
-              padding[2] = chartConfigParameters.current[parameter][0];
+              padding[2] = configCommands[parameter][0];
               break;
             case 'padding-left':
-              padding[3] = chartConfigParameters.current[parameter][0];
+              padding[3] = configCommands[parameter][0];
               break;
           }
           chartConfig.current.padding = padding;
@@ -332,7 +405,21 @@ const index = () => {
 
     myChart.render();
 
-  }, [data, dataAvailable, commands])
+    // Get image URL
+    // console.log(toDataURL(myChart));
+
+    // setTimeout(() => {
+    //   var image = new Image();
+    //   image.src = toDataURL(myChart)
+    //   image.onload = () => {
+    //     console.log(image);
+    //     console.log(image.width);
+    //     document.body.appendChild(image);
+    //   }  
+    // }, 0)
+
+
+  }, [data, dataAvailable, commands, configCommands])
 
   const displayVariables = () => {
     if (!dataAvailable) return;
@@ -373,12 +460,13 @@ const index = () => {
           <h2 className="sectionTitle">Chart</h2>
           <div id="chart-container">
             <div id="chart"></div>
+
           </div>
         </div>
         {displayCommandBar && <div className="commandBar">
           <div className="commandBarHeader">
             <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
-            <h4>Aleph Commands</h4>
+            <h4>App Commands</h4>
           </div>
           <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
           <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
