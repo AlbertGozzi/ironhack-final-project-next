@@ -1,4 +1,5 @@
 import React from 'react'
+import Head from 'next/head'
 import { useState, useEffect, useRef } from 'react'
 import { Upload, Icon, message, Button, Divider, Input, Layout, Menu, Breadcrumb } from 'antd';
 import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined, RocketOutlined, BranchesOutlined } from '@ant-design/icons';
@@ -397,7 +398,7 @@ const index = () => {
     })
 
     myChart.current.render();
-    
+
   }, [data, dataAvailable, commands, configCommands])
 
   const downloadFile = () => {
@@ -429,48 +430,54 @@ const index = () => {
   }
 
   return (
-      <Layout>
-        <Header className="header">
-          <div className="logo" />
-          <h1 style={{ color: 'white' }}>Chart Making App</h1>
-        </Header>
-        <div className="main">
-          <div className="section data">
-            <h2>Data</h2>
-            <div className="upload">
-              <Upload onChange={onImportExcel} multiple={false} action="/api/fileUpload" >
-                <Button type="primary">
-                  <UploadOutlined /> Upload
+      <div>
+        <Head>
+          <title>Chart Making App</title>
+          <meta property="og:title" content="My page title" key="title" />
+        </Head>
+        <Layout>
+          <Header className="header">
+            <div className="logo" />
+            <h1 style={{ color: 'white' }}>Chart Making App</h1>
+          </Header>
+          <div className="main">
+            <div className="section data">
+              <h2>Data</h2>
+              <div className="upload">
+                <Upload onChange={onImportExcel} multiple={false} action="/api/fileUpload" >
+                  <Button type="primary">
+                    <UploadOutlined /> Upload
+                  </Button>
+                </Upload>
+              </div>
+              <div className="variables">
+                <h3>Variables</h3>
+                {displayVariables()}
+              </div>
+            </div>
+            <div className="section chart">
+              <div className="chartTitle">
+                <h2>Chart</h2>
+                <Button type="primary" onClick={downloadFile}>
+                  Download
                 </Button>
-              </Upload>
-            </div>
-            <div className="variables">
-              <h3>Variables</h3>
-              {displayVariables()}
-            </div>
-          </div>
-          <div className="section chart">
-            <div className="chartTitle">
-              <h2>Chart</h2>
-              <Button type="primary" onClick={downloadFile}>
-                Download
-              </Button>
-            </div>
-            <div id="chart-container">
-              <div id="chart"></div>
+              </div>
+              <div id="chart-container">
+                <div id="chart"></div>
 
+              </div>
             </div>
+            {displayCommandBar && <div className="commandBar">
+              <div className="commandBarHeader">
+                <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
+                <h4>App Commands</h4>
+              </div>
+              <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
+              <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
+            </div>}
           </div>
-          {displayCommandBar && <div className="commandBar">
-            <div className="commandBarHeader">
-              <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
-              <h4>App Commands</h4>
-            </div>
-            <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
-            <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
-          </div>}
-        </div>
-      </Layout>
+        </Layout>
+      </div>
   );
 }
  
