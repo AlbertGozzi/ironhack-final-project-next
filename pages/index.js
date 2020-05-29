@@ -1,12 +1,16 @@
 import React from 'react'
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Icon, message, Button, Divider, Input } from 'antd';
+import { Upload, Icon, message, Button, Divider, Input, Layout, Menu, Breadcrumb } from 'antd';
 import { UploadOutlined, FieldNumberOutlined, FieldStringOutlined, RocketOutlined, BranchesOutlined } from '@ant-design/icons';
 import { Chart } from '@antv/g2';
 import * as XLSX from "xlsx";
 import DataSet from '@antv/data-set';
 import { initialData } from '../components/initialData.js';
 import isHotkey from 'is-hotkey';
+import download from 'downloadjs';
+
+const { SubMenu } = Menu;
+const { Header, Content, Sider } = Layout;
 
 const AUX_WORDS = ['by']
 const OPERATION_TYPES = ['create', 'update', 'delete'];
@@ -34,35 +38,8 @@ const HOTKEYS = {
   'mod+k': 'displayCommandBar',
 };
 
-function formatNumber(num) {
+const formatNumber = (num) => {
   return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
-}
-
-function toDataURL(chart) {
-  const canvas = chart.getCanvas();
-  const renderer = chart.renderer;
-  const canvasDom = canvas.get('el');
-
-  console.log(canvas);
-  console.log(canvasDom);
-
-  let dataURL = '';
-  // if (renderer === 'svg') {
-  //   const clone = canvasDom.cloneNode(true);
-  //   const svgDocType = document.implementation.createDocumentType(
-  //     'svg',
-  //     '-//W3C//DTD SVG 1.1//EN',
-  //     'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
-  //   );
-  //   const svgDoc = document.implementation.createDocument('http://www.w3.org/2000/svg', 'svg', svgDocType);
-  //   svgDoc.replaceChild(clone, svgDoc.documentElement);
-  //   const svgData = new XMLSerializer().serializeToString(svgDoc);
-  //   dataURL = 'data:image/svg+xml;charset=utf8,' + encodeURIComponent(svgData);
-  // } else if (renderer === 'canvas') {
-    // dataURL = canvasDom.toDataURL('image/png');
-    dataURL = canvasDom.toDataURL();
-  // }
-  return dataURL;
 }
 
 let defaultChartConfig = {
@@ -81,13 +58,13 @@ const index = () => {
   const [displayCommandBar, setDisplayCommandBar] = useState(false);
   const [commands, setCommands] = useState([]);
   const [configCommands, setConfigCommands] = useState({});
+  const myChart = useRef();
   const chartConfig = useRef(defaultChartConfig);
 
   const operationsMap = { 
     chart: {
       create (parameters) {
         let [variables, type, color] = [parameters.variables, parameters.type, parameters.color];
-  
         [this.y, this.x, this.adjust] = [...variables];
         this.displayY = this.y;
         
@@ -133,9 +110,20 @@ const index = () => {
                 .color(this.adjust)
               break;
             case 'clustered':
+              const dv1 = new DataSet.DataView().source(data);
+              this.displayY = `Sum of ${this.y}`;
+              dv1.transform({
+                type: 'aggregate',
+                fields: [this.y], 
+                operations: ['sum'],
+                as: [this.displayY],
+                groupBy: [this.x, this.adjust], 
+              });
+
+              this.data(dv1.rows);
               this
               .interval()
-              .position(`${this.x}*${this.y}`)
+              .position(`${this.x}*${this.displayY}`)
                 .adjust([
                   {
                     type: 'dodge',
@@ -145,9 +133,9 @@ const index = () => {
               .color(this.adjust);
               break;
             case 'line':
-              const dv1 = new DataSet.DataView().source(data);
+              const dv2 = new DataSet.DataView().source(data);
               this.displayY = `Sum of ${this.y}`;
-              dv1.transform({
+              dv2.transform({
                 type: 'aggregate',
                 fields: [this.y], 
                 operations: ['sum'],
@@ -156,7 +144,7 @@ const index = () => {
               });
                   
               // Data loading
-              this.data(dv1.rows);
+              this.data(dv2.rows);
     
               this.line().position(`${this.x}*${this.displayY}`).color((color && color[0]) || '#6395F9');
               break;
@@ -207,20 +195,18 @@ const index = () => {
   }
 
   const onImportExcel = info => {
-    console.log(info);
     if( info.file.status === 'done') {
       let file = info.file.originFileObj;
       const fileReader = new window.FileReader();
       fileReader.onload = event => {
         try {
-          console.log(event.target);
           const { result } = event.target;
           const wb = XLSX.read(result, { type: "binary" });
           const wsname = wb.SheetNames[0];
           let ws = wb.Sheets[wsname];
           trim_headers(ws)
           const data = XLSX.utils.sheet_to_json(ws);
-          console.log(data[0]);
+          // console.log(data[0]);
 
           let variables = Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) );
 
@@ -372,7 +358,7 @@ const index = () => {
       }
     })
 
-    let myChart = new customChart(chartConfig.current);
+    myChart.current = new customChart(chartConfig.current);
 
     // Merge commands
     let commandsMergedByOpType = OPERATION_TYPES.map(opType => {
@@ -400,28 +386,28 @@ const index = () => {
 
       ast.operations.forEach(element => { 
         let operation = operationsMap[element.element][opType]
-        let parameters = element.parameters;  
-        myChart.apply(operation, [parameters]);
+        let parameters = element.parameters;
+        try {
+          myChart.current.apply(operation, [parameters]);
+        } catch (e) {
+          console.log(e);
+        }
+        // myChart.current.apply(operation, [parameters]);
       })
     })
 
-    myChart.render();
-
-    // Get image URL
-    // console.log(toDataURL(myChart));
-
-    // setTimeout(() => {
-    //   var image = new Image();
-    //   image.src = toDataURL(myChart)
-    //   image.onload = () => {
-    //     console.log(image);
-    //     console.log(image.width);
-    //     document.body.appendChild(image);
-    //   }  
-    // }, 0)
-
-
+    myChart.current.render();
+    
   }, [data, dataAvailable, commands, configCommands])
+
+  const downloadFile = () => {
+    const canvas = myChart.current.getCanvas();
+    const renderer = myChart.current.renderer;
+    const canvasDom = canvas.get('el');
+    let dataURL = '';
+    dataURL = canvasDom.toDataURL('image/png');
+    download(dataURL, `MyChart - ${Date.now().toString().slice(-4)}.png`);
+  }
 
   const displayVariables = () => {
     if (!dataAvailable) return;
@@ -443,37 +429,48 @@ const index = () => {
   }
 
   return (
-      <div className="main">
-        <div className="section data">
-          <h2 className="sectionTitle">Data</h2>
-          <div className="upload">
-            <Upload onChange={onImportExcel} multiple={false} action="/api/fileUpload" >
-              <Button>
-                <UploadOutlined /> Upload
+      <Layout>
+        <Header className="header">
+          <div className="logo" />
+          <h1 style={{ color: 'white' }}>Chart Making App</h1>
+        </Header>
+        <div className="main">
+          <div className="section data">
+            <h2>Data</h2>
+            <div className="upload">
+              <Upload onChange={onImportExcel} multiple={false} action="/api/fileUpload" >
+                <Button type="primary">
+                  <UploadOutlined /> Upload
+                </Button>
+              </Upload>
+            </div>
+            <div className="variables">
+              <h3>Variables</h3>
+              {displayVariables()}
+            </div>
+          </div>
+          <div className="section chart">
+            <div className="chartTitle">
+              <h2>Chart</h2>
+              <Button type="primary" onClick={downloadFile}>
+                Download
               </Button>
-            </Upload>
-          </div>
-          <div className="variables">
-            <h3>Variables</h3>
-            {displayVariables()}
-          </div>
-        </div>
-        <div className="section chart">
-          <h2 className="sectionTitle">Chart</h2>
-          <div id="chart-container">
-            <div id="chart"></div>
+            </div>
+            <div id="chart-container">
+              <div id="chart"></div>
 
+            </div>
           </div>
+          {displayCommandBar && <div className="commandBar">
+            <div className="commandBarHeader">
+              <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
+              <h4>App Commands</h4>
+            </div>
+            <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
+            <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
+          </div>}
         </div>
-        {displayCommandBar && <div className="commandBar">
-          <div className="commandBarHeader">
-            <RocketOutlined className="icon" style={{ fontSize: '1.5em'}} />
-            <h4>App Commands</h4>
-          </div>
-          <Divider style={{ 'backgroundColor': 'white', margin: '1em 0'}}/>
-          <Input autoFocus placeholder="Input your command here." onPressEnter={() => submitCommand(event)}/>          
-        </div>}
-      </div>
+      </Layout>
   );
 }
  

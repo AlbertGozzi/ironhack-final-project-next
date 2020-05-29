@@ -17,14 +17,40 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.header {
+  display: flex;
+  align-items: center;
+
+  height: 3.5em;
+
+  padding-left: 1em;
+}
+
+.header h1 {
+  margin: 0;
+  padding: 0 0 0 0.2em;
+}
+
+.logo {
+  display: inline;
+  height: 60%;
+  content:url(https://img.icons8.com/plasticine/2x/rocket.png);
+}
+
+
 .main { 
   display: grid;
   grid-template-columns: 1fr 4fr;
 }
 
 .section {
-  padding: 0.5em 0.5em 0 1em;
-  height: 100vh;
+  padding: 0.5em 1em 0 1em;
+  height: calc(100vh - 3.5em);
+}
+
+.chartTitle {
+  display: flex;
+  justify-content: space-between;
 }
 
 .data {

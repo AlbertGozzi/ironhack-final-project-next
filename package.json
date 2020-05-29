@@ -17,6 +17,7 @@
     "bizcharts": "^4.0.3",
     "cross-env": "^7.0.2",
     "dayjs": "1.8.24",
+    "downloadjs": "^1.4.7",
     "esm": "^3.2.25",
     "is-hotkey": "^0.1.6",
     "next": "9.3.4",
