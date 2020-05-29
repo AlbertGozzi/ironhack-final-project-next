@@ -434,6 +434,7 @@ const index = () => {
         <Head>
           <title>Chart Making App</title>
           <meta property="og:title" content="My page title" key="title" />
+          <link rel="shortcut icon" href="https://img.icons8.com/plasticine/2x/rocket.png" />
         </Head>
         <Layout>
           <Header className="header">
