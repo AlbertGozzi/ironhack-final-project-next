@@ -206,33 +206,6 @@ const index = () => {
     }
   }
 
-  const handleFileUpload = e => {
-    console.log("The file to be uploaded is: ", e.target.files[0]);
-
-    console.log(e.target);
-
-    const { result } = e.target;
-    const wb = XLSX.read(result, { type: "binary" });
-    const wsname = wb.SheetNames[0];
-    let ws = wb.Sheets[wsname];
-    trim_headers(ws)
-    const data = XLSX.utils.sheet_to_json(ws);
-    console.log(data[0]);
-
-    let variables = Object.keys(data[0]).map((variable, i) => ({name: variable, id: i, type: typeof(data[1][variable])}) );
-
-    setVariables(variables)
-    setWorkbook(wb);
-    setData(data);
-    setDataAvailable(true);
-
-    const uploadData = new FormData();
-    // imageUrl => this name has to be the same as in the model since we pass
-    // req.body to .create() method when creating a new thing in '/api/things/create' POST route
-    uploadData.append("imageUrl", e.target.files[0]);
-    console.log(uploadData);
-  }
-
   const onImportExcel = info => {
     console.log(info);
     if( info.file.status === 'done') {
@@ -474,10 +447,6 @@ const index = () => {
         <div className="section data">
           <h2 className="sectionTitle">Data</h2>
           <div className="upload">
-            <input 
-                    type="file" 
-                    onChange={(e) => handleFileUpload(e)} /> 
-            <input type="file" encType='multipart/form-data' onChange={onImportExcel}/>
             <Upload onChange={onImportExcel} multiple={false} action="/api/fileUpload" >
               <Button>
                 <UploadOutlined /> Upload
