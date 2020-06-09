@@ -10,9 +10,7 @@ import { initialData } from '../components/initialData.js';
 import isHotkey from 'is-hotkey';
 import download from 'downloadjs';
 
-const { SubMenu } = Menu;
-const { Header, Content, Sider } = Layout;
-
+// Constants
 const AUX_WORDS = ['by']
 const OPERATION_TYPES = ['create', 'update', 'delete'];
 const ELEMENTS = ['chart', 'xaxis', 'yaxis'];
@@ -38,18 +36,31 @@ const PARAMETERS = {
 const HOTKEYS = {
   'mod+k': 'displayCommandBar',
 };
-
-const formatNumber = (num) => {
-  return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
-}
-
-let defaultChartConfig = {
+const DEFAULT_CHART_CONFIG = {
   container: 'chart',
   autoFit: false,
   width: 800,
   height: 500,
   padding: [50, 50, 50, 50],
 }
+const { Header } = Layout;
+
+// Aux Functions
+const formatNumber = (num) => {
+  return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')
+}
+const trimHeaders = (ws) => {
+  if(!ws || !ws["!ref"]) return;
+  var ref = XLSX.utils.decode_range(ws["!ref"]);
+  for(var C = ref.s.c; C <= ref.e.c; ++C) {
+    var cell = ws[XLSX.utils.encode_cell({r:ref.s.r, c:C})];
+    if(cell.t == "s") {
+      cell.v = cell.v.trim();
+      if(cell.w) cell.w = cell.w.trim();
+    }
+  }
+}
+
 
 const index = () => {
   const [workbook, setWorkbook] = useState();
@@ -60,7 +71,7 @@ const index = () => {
   const [commands, setCommands] = useState([]);
   const [configCommands, setConfigCommands] = useState({});
   const myChart = useRef();
-  const chartConfig = useRef(defaultChartConfig);
+  const chartConfig = useRef(DEFAULT_CHART_CONFIG);
 
   const operationsMap = { 
     chart: {
@@ -183,18 +194,6 @@ const index = () => {
     }
   }
 
-  function trim_headers(ws) {
-    if(!ws || !ws["!ref"]) return;
-    var ref = XLSX.utils.decode_range(ws["!ref"]);
-    for(var C = ref.s.c; C <= ref.e.c; ++C) {
-      var cell = ws[XLSX.utils.encode_cell({r:ref.s.r, c:C})];
-      if(cell.t == "s") {
-        cell.v = cell.v.trim();
-        if(cell.w) cell.w = cell.w.trim();
-      }
-    }
-  }
-
   const onImportExcel = info => {
     if( info.file.status === 'done') {
       let file = info.file.originFileObj;
@@ -205,7 +204,7 @@ const index = () => {
           const wb = XLSX.read(result, { type: "binary" });
           const wsname = wb.SheetNames[0];
           let ws = wb.Sheets[wsname];
-          trim_headers(ws)
+          trimHeaders(ws)
           const data = XLSX.utils.sheet_to_json(ws);
           // console.log(data[0]);
 
